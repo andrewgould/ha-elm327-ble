@@ -205,9 +205,9 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
         state.connected = state.in_range = True
         if adapter != state.adapter:
             state.adapter = adapter
-            registry = dr.async_get(self.hass)
-            if entry := registry.async_get_device(identifiers={(DOMAIN, self.address)}):
-                registry.async_update_device(entry.id, model=adapter)
+            dr.async_get(self.hass).async_get_or_create(
+                config_entry_id=self.config_entry.entry_id,
+                identifiers={(DOMAIN, self.address)}, model=adapter)
         _LOGGER.debug("%s: connected, %s", self.address, adapter)
 
     async def _disconnect(self) -> None:

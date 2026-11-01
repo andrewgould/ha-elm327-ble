@@ -64,7 +64,9 @@ class Elm327ConfigFlow(ConfigFlow, domain=DOMAIN):
         options = [
             selector.SelectOptionDict(
                 value=info.address,
-                label=f"{info.name or info.address} ({info.address}, {info.rssi} dBm)")
+                label=(f"{info.name} ({info.address}, {info.rssi} dBm)"
+                       if info.name and info.name != info.address
+                       else f"{info.address} ({info.rssi} dBm)"))
             for info in bluetooth.async_discovered_service_info(self.hass, connectable=True)
             if info.address not in current and _looks_like_adapter(info)
         ]

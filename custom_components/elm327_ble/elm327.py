@@ -164,10 +164,11 @@ class Elm327:
     async def start(self) -> str:
         """Subscribe and reset the adapter to terse output. Returns its version string."""
         await self._client.start_notify(self._rx, self._on_notify)
-        version = clean_lines(await self.command("ATZ", timeout=5))
+        reply = (await self.command("ATZ", timeout=5)).decode("ascii", "ignore")
         for cmd in ("ATE0", "ATL0", "ATS0", "ATH0"):
             await self.command(cmd)
-        return next((v for v in version if v.startswith("ELM")), "ELM327")
+        return next((line.strip() for line in reply.split("\r") if line.strip().startswith("ELM")),
+                    "ELM327")
 
     async def command(self, cmd: str, timeout: float = 3) -> bytes:
         async with self._lock:
