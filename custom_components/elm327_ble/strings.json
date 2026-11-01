@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ELM327 Bluetooth LE adapter",
+        "description": "Pick the OBD-II adapter plugged into the car. Only adapters Home Assistant can hear right now are listed, and the car must be within reach of a Bluetooth proxy.",
+        "data": {
+          "address": "Adapter",
+          "name": "Car name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Couldn't connect to the adapter, or it didn't answer like an ELM327. Is the phone app still connected to it?"
+    },
+    "abort": {
+      "already_configured": "This adapter is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "running_voltage": "Engine running at or above (V)",
+          "poll_interval": "Battery voltage read every (seconds) while parked"
+        },
+        "data_description": {
+          "running_voltage": "The car is only asked for OBD data while the battery voltage is at least this, i.e. while the alternator is charging.",
+          "poll_interval": "Reading the voltage only talks to the adapter, not the car. This is also how quickly an engine start is noticed."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "in_range": { "name": "In range" },
+      "connected": { "name": "Adapter connected" },
+      "engine_running": { "name": "Engine running" },
+      "check_engine_light": { "name": "Check engine light" }
+    },
+    "sensor": {
+      "battery_voltage": { "name": "Battery voltage" },
+      "fuel_level": { "name": "Fuel level" },
+      "odometer": { "name": "Odometer" },
+      "coolant_temperature": { "name": "Coolant temperature" },
+      "oil_temperature": { "name": "Oil temperature" },
+      "ambient_temperature": { "name": "Outside temperature" },
+      "distance_since_codes_cleared": { "name": "Distance since codes cleared" },
+      "distance_with_mil": { "name": "Distance with check engine light on" },
+      "trouble_codes": { "name": "Trouble codes" },
+      "last_read": { "name": "Last read from car" }
+    }
+  }
+}

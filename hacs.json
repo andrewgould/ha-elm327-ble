@@ -1,0 +1,5 @@
+{
+  "name": "ELM327 OBD-II (Bluetooth LE)",
+  "render_readme": true,
+  "homeassistant": "2025.1.0"
+}
