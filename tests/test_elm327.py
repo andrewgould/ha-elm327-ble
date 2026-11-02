@@ -2,10 +2,12 @@
 
 import importlib.util
 import pathlib
+import sys
 
 _path = pathlib.Path(__file__).parents[1] / "custom_components/elm327_ble/elm327.py"
 _spec = importlib.util.spec_from_file_location("elm327", _path)
 elm327 = importlib.util.module_from_spec(_spec)
+sys.modules["elm327"] = elm327  # dataclasses look the module up while decorating
 _spec.loader.exec_module(elm327)
 
 PIDS = {p.key: p for p in elm327.PIDS}
