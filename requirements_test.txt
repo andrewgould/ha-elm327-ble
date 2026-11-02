@@ -1,3 +1,4 @@
-# The tests cover the ELM327 protocol module, which has no Home Assistant imports.
+# The tests cover the ELM327 protocol module, which needs bleak but not Home Assistant.
+bleak>=0.22.0
 pytest>=8.0.0
 ruff>=0.8.0
