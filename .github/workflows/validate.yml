@@ -1,0 +1,28 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # Installed as a HACS custom repository, not from the default store, and
+          # the icon ships in the integration's own brand/ folder (HA 2026.3+), so
+          # the store-only check for a home-assistant/brands entry doesn't apply.
+          ignore: brands

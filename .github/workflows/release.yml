@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches manifest.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(jq -r .version custom_components/elm327_ble/manifest.json)
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $tag but manifest.json says $manifest."
+            echo "Bump the manifest version and re-tag -- HACS reads the version from the manifest."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Run the tests before publishing anything
+        run: |
+          pip install -r requirements_test.txt
+          ruff check .
+          pytest -q
+
+      # HACS installs from this asset (hacs.json sets zip_release/filename), and
+      # expects the integration's own files at the root of the zip -- not nested
+      # under custom_components/elm327_ble/.
+      - name: Build the HACS zip
+        run: |
+          cd custom_components/elm327_ble
+          zip -r "$GITHUB_WORKSPACE/elm327_ble.zip" . -x '*.pyc' -x '__pycache__/*'
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes_arg=(--generate-notes)
+          # Prefer the hand-written CHANGELOG section for this version, if there is one.
+          if awk -v v="## ${GITHUB_REF_NAME#v}" '$0 ~ "^"v" " || $0 == v {found=1} END {exit !found}' CHANGELOG.md; then
+            awk -v v="${GITHUB_REF_NAME#v}" '
+              $0 ~ "^## "v"( |$)" {inside=1; next}
+              /^## / {inside=0}
+              inside {print}
+            ' CHANGELOG.md > release-notes.md
+            notes_arg=(--notes-file release-notes.md)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            "${notes_arg[@]}" \
+            elm327_ble.zip

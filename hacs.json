@@ -1,5 +1,8 @@
 {
   "name": "ELM327 OBD-II (Bluetooth LE)",
   "render_readme": true,
-  "homeassistant": "2025.1.0"
+  "homeassistant": "2025.1.0",
+  "zip_release": true,
+  "filename": "elm327_ble.zip",
+  "hide_default_branch": true
 }

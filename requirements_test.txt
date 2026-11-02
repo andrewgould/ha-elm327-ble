@@ -1,0 +1,3 @@
+# The tests cover the ELM327 protocol module, which has no Home Assistant imports.
+pytest>=8.0.0
+ruff>=0.8.0
