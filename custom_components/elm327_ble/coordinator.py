@@ -29,14 +29,17 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_POLL_INTERVAL,
     CONF_RUNNING_VOLTAGE,
+    CONF_VEHICLE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_RUNNING_VOLTAGE,
     DOMAIN,
+    EXT_TRIES,
     RETRY_MAX,
     RETRY_MIN,
     RUNNING_POLL_INTERVAL,
 )
-from .elm327 import PIDS, Elm327, Elm327Error, decode_monitor_status
+from .elm327 import PIDS, Elm327, Elm327Error, ExtPid, decode_monitor_status
+from .vehicles import GENERIC, VEHICLES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +76,9 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
         self._elm: Elm327 | None = None
         self._wake = asyncio.Event()
         self._read_dtcs = True
+        # Unanswered reads per service 22 value this drive. After EXT_TRIES misses a value
+        # isn't asked for again until the next drive.
+        self._ext_misses: dict[str, int] = {}
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.address)},
             connections={(CONNECTION_BLUETOOTH, self.address)},
@@ -87,6 +93,12 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
     @property
     def poll_interval(self) -> float:
         return self.config_entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+
+    @property
+    def extended(self) -> tuple[ExtPid, ...]:
+        """The chosen vehicle's manufacturer-specific values."""
+        vehicle = self.config_entry.options.get(CONF_VEHICLE, GENERIC)
+        return VEHICLES.get(vehicle, VEHICLES[GENERIC])[1]
 
     async def async_start(self) -> None:
         if stored := await self._store.async_load():
@@ -230,6 +242,7 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
             if not was_running:
                 _LOGGER.debug("%s: engine running at %.1f V", self.address, state.voltage)
                 self._read_dtcs = True
+                self._ext_misses.clear()
             await self._read_car(elm, state)
         self.async_set_updated_data(state)
 
@@ -253,6 +266,20 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
                 if len(payload) >= pid.size:
                     state.values[pid.key] = pid.decode(payload)
                     answered = True
+        if extended := [e for e in self.extended if self._ext_misses.get(e.key, 0) < EXT_TRIES]:
+            try:
+                for ext in extended:
+                    payload = await elm.mode22(ext.header, ext.rx, ext.did)
+                    if payload is not None and len(payload) >= ext.size:
+                        state.values[ext.key] = ext.decode(payload)
+                        self._ext_misses.pop(ext.key, None)
+                        answered = True
+                    else:
+                        misses = self._ext_misses[ext.key] = self._ext_misses.get(ext.key, 0) + 1
+                        _LOGGER.debug("%s: no answer for %s (%d of %d)",
+                                      self.address, ext.key, misses, EXT_TRIES)
+            finally:
+                await elm.broadcast()
         if self._read_dtcs and answered:
             state.dtcs = await elm.dtcs()
             self._read_dtcs = False

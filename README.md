@@ -38,6 +38,25 @@ when that was.
 PIDs the car doesn't list as supported are never asked for, and their
 sensors stay unknown.
 
+## Vehicle profiles
+
+Some cars offer more than standard OBD-II through manufacturer-specific
+(service 22) requests to individual modules. Pick the car under **Configure →
+Vehicle** to read those as well:
+
+| Vehicle | Extra sensors |
+| --- | --- |
+| Mazda CX-9, second generation (2016-2024) | Tyre pressure for each wheel, tyre temperature for each wheel (disabled by default), fuel remaining in litres, oil temperature, transmission temperature |
+
+These are only asked for while the engine runs, like everything else from the
+car. A value the car doesn't answer three times in a row is left alone until
+the next drive.
+
+The commands and scaling come from [OBDb](https://github.com/OBDb), the open
+vehicle signal database also used by the Pelican and Sidecar apps, licensed
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Adding
+another car is a matter of a new entry in `vehicles.py`.
+
 ## Install
 
 Through [HACS](https://hacs.xyz), as a custom repository:

@@ -21,10 +21,12 @@
     "step": {
       "init": {
         "data": {
+          "vehicle": "Vehicle",
           "running_voltage": "Engine running at or above (V)",
           "poll_interval": "Battery voltage read every (seconds) while parked"
         },
         "data_description": {
+          "vehicle": "Some cars offer more than standard OBD-II, such as tyre pressures. Pick yours to read those too.",
           "running_voltage": "The car is only asked for OBD data while the battery voltage is at least this, i.e. while the alternator is charging.",
           "poll_interval": "Reading the voltage only talks to the adapter, not the car. This is also how quickly an engine start is noticed."
         }
@@ -33,22 +35,80 @@
   },
   "entity": {
     "binary_sensor": {
-      "in_range": { "name": "In range" },
-      "connected": { "name": "Adapter connected" },
-      "engine_running": { "name": "Engine running" },
-      "check_engine_light": { "name": "Check engine light" }
+      "in_range": {
+        "name": "In range"
+      },
+      "connected": {
+        "name": "Adapter connected"
+      },
+      "engine_running": {
+        "name": "Engine running"
+      },
+      "check_engine_light": {
+        "name": "Check engine light"
+      }
     },
     "sensor": {
-      "battery_voltage": { "name": "Battery voltage" },
-      "fuel_level": { "name": "Fuel level" },
-      "odometer": { "name": "Odometer" },
-      "coolant_temperature": { "name": "Coolant temperature" },
-      "oil_temperature": { "name": "Oil temperature" },
-      "ambient_temperature": { "name": "Outside temperature" },
-      "distance_since_codes_cleared": { "name": "Distance since codes cleared" },
-      "distance_with_mil": { "name": "Distance with check engine light on" },
-      "trouble_codes": { "name": "Trouble codes" },
-      "last_read": { "name": "Last read from car" }
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "fuel_level": {
+        "name": "Fuel level"
+      },
+      "odometer": {
+        "name": "Odometer"
+      },
+      "coolant_temperature": {
+        "name": "Coolant temperature"
+      },
+      "oil_temperature": {
+        "name": "Oil temperature"
+      },
+      "ambient_temperature": {
+        "name": "Outside temperature"
+      },
+      "distance_since_codes_cleared": {
+        "name": "Distance since codes cleared"
+      },
+      "distance_with_mil": {
+        "name": "Distance with check engine light on"
+      },
+      "trouble_codes": {
+        "name": "Trouble codes"
+      },
+      "last_read": {
+        "name": "Last read from car"
+      },
+      "tyre_pressure_front_left": {
+        "name": "Front left tyre pressure"
+      },
+      "tyre_pressure_front_right": {
+        "name": "Front right tyre pressure"
+      },
+      "tyre_pressure_rear_left": {
+        "name": "Rear left tyre pressure"
+      },
+      "tyre_pressure_rear_right": {
+        "name": "Rear right tyre pressure"
+      },
+      "tyre_temperature_front_left": {
+        "name": "Front left tyre temperature"
+      },
+      "tyre_temperature_front_right": {
+        "name": "Front right tyre temperature"
+      },
+      "tyre_temperature_rear_left": {
+        "name": "Rear left tyre temperature"
+      },
+      "tyre_temperature_rear_right": {
+        "name": "Rear right tyre temperature"
+      },
+      "fuel_remaining": {
+        "name": "Fuel remaining"
+      },
+      "transmission_temperature": {
+        "name": "Transmission temperature"
+      }
     }
   }
 }

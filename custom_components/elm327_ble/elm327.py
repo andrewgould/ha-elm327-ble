@@ -54,6 +54,21 @@ PIDS: tuple[Pid, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class ExtPid:
+    """A manufacturer-specific value read with service 22 from one module.
+
+    `header` is the module's request address and `rx` the address it answers from.
+    """
+
+    key: str
+    header: int
+    rx: int
+    did: int
+    size: int
+    decode: Callable[[bytes], float | int]
+
+
 def clean_lines(raw: bytes) -> list[str]:
     """Split a reply into upper-case lines without spaces, prompt or noise."""
     text = raw.decode("ascii", "ignore").replace(">", "")
@@ -69,6 +84,16 @@ def clean_lines(raw: bytes) -> list[str]:
 def mode01_payload(raw: bytes, pid: int) -> bytes | None:
     """Data bytes of the first ECU's answer to `01 <pid>`, or None if nobody answered."""
     prefix = f"41{pid:02X}"
+    for line in clean_lines(raw):
+        if line.startswith(prefix) and re.fullmatch(r"[0-9A-F]+", line):
+            data = line[len(prefix):]
+            return bytes.fromhex(data[: len(data) // 2 * 2])
+    return None
+
+
+def mode22_payload(raw: bytes, did: int) -> bytes | None:
+    """Data bytes of the answer to `22 <did>`, or None (no answer, or a 7F refusal)."""
+    prefix = f"62{did:04X}"
     for line in clean_lines(raw):
         if line.startswith(prefix) and re.fullmatch(r"[0-9A-F]+", line):
             data = line[len(prefix):]
@@ -155,6 +180,9 @@ class Elm327:
         self._buffer = bytearray()
         self._prompt = asyncio.Event()
         self._lock = asyncio.Lock()
+        # Module address set with ATSH for service 22, or None for the default
+        # functional (broadcast) address that mode 01 and 03 use.
+        self._header: int | None = None
 
     def _on_notify(self, _: BleakGATTCharacteristic, data: bytearray) -> None:
         self._buffer.extend(data)
@@ -165,6 +193,7 @@ class Elm327:
         """Subscribe and reset the adapter to terse output. Returns its version string."""
         await self._client.start_notify(self._rx, self._on_notify)
         reply = (await self.command("ATZ", timeout=5)).decode("ascii", "ignore")
+        self._header = None
         for cmd in ("ATE0", "ATL0", "ATS0", "ATH0"):
             await self.command(cmd)
         return next((line.strip() for line in reply.split("\r") if line.strip().startswith("ELM")),
@@ -191,6 +220,21 @@ class Elm327:
 
     async def mode01(self, pid: int, timeout: float = 3) -> bytes | None:
         return mode01_payload(await self.command(f"01{pid:02X}", timeout), pid)
+
+    async def mode22(self, header: int, rx: int, did: int) -> bytes | None:
+        """Ask one module for a service 22 value. Call broadcast() when done."""
+        if self._header != header:
+            await self.command(f"ATSH{header:03X}")
+            await self.command(f"ATCRA{rx:03X}")
+            self._header = header
+        return mode22_payload(await self.command(f"22{did:04X}"), did)
+
+    async def broadcast(self) -> None:
+        """Back to the functional address and any receiver, for mode 01 and 03."""
+        if self._header is not None:
+            await self.command("ATSH7DF")
+            await self.command("ATCRA")
+            self._header = None
 
     async def supported(self) -> set[int]:
         """Walk the "PIDs supported" chain (00, 20, 40 ...) as far as the car goes."""

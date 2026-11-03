@@ -17,7 +17,9 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfElectricPotential,
     UnitOfLength,
+    UnitOfPressure,
     UnitOfTemperature,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -93,9 +95,42 @@ SENSORS: tuple[Elm327SensorDescription, ...] = (
 )
 
 
+WHEELS = ("front_left", "front_right", "rear_left", "rear_right")
+
+# Manufacturer-specific values, created only when the chosen vehicle offers them.
+EXTENDED_SENSORS: tuple[Elm327SensorDescription, ...] = (
+    *(Elm327SensorDescription(
+        key=f"tyre_pressure_{wheel}", value=_car(f"tyre_pressure_{wheel}"),
+        device_class=SensorDeviceClass.PRESSURE, state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPressure.KPA, suggested_display_precision=0,
+        icon="mdi:car-tire-alert",
+    ) for wheel in WHEELS),
+    *(Elm327SensorDescription(
+        key=f"tyre_temperature_{wheel}", value=_car(f"tyre_temperature_{wheel}"),
+        device_class=SensorDeviceClass.TEMPERATURE, state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_registry_enabled_default=False,
+    ) for wheel in WHEELS),
+    Elm327SensorDescription(
+        key="fuel_remaining", value=_car("fuel_remaining"), icon="mdi:gas-station",
+        device_class=SensorDeviceClass.VOLUME_STORAGE, state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfVolume.LITERS, suggested_display_precision=0,
+    ),
+    Elm327SensorDescription(
+        key="transmission_temperature", value=_car("transmission_temperature"),
+        device_class=SensorDeviceClass.TEMPERATURE, state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS, suggested_display_precision=0,
+    ),
+)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: Elm327ConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities(Elm327Sensor(entry.runtime_data, d) for d in SENSORS)
+    coordinator = entry.runtime_data
+    offered = {e.key for e in coordinator.extended}
+    async_add_entities(
+        Elm327Sensor(coordinator, d)
+        for d in (*SENSORS, *(d for d in EXTENDED_SENSORS if d.key in offered)))
 
 
 class Elm327Sensor(Elm327Entity, SensorEntity):

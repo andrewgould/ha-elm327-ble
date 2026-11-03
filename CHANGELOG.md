@@ -3,6 +3,17 @@
 Versions follow [semantic versioning](https://semver.org/). The version in
 `manifest.json` is what HACS installs, and each release tag must match it.
 
+## 1.1.0
+
+- **Vehicle profiles.** A new **Vehicle** option reads manufacturer-specific
+  (service 22) values on top of standard OBD-II. The first profile is the
+  second-generation Mazda CX-9 (2016-2024): tyre pressure and temperature for
+  each wheel, fuel remaining in litres, oil temperature and transmission
+  temperature. Commands and scaling are from [OBDb](https://github.com/OBDb).
+  The default stays standard OBD-II only, so nothing changes until a vehicle
+  is picked.
+- Changing the options now reloads the integration.
+
 ## 1.0.0
 
 First release.

@@ -14,12 +14,14 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_POLL_INTERVAL,
     CONF_RUNNING_VOLTAGE,
+    CONF_VEHICLE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_RUNNING_VOLTAGE,
     DOMAIN,
 )
 from .coordinator import ERRORS
 from .elm327 import KNOWN_SERVICES, Elm327
+from .vehicles import GENERIC, VEHICLES
 
 NAME_HINTS = ("OBD", "VEEPEAK", "VLINK", "ELM", "OBDLINK", "LELINK")
 
@@ -93,6 +95,10 @@ class Elm327OptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
+                vol.Required(CONF_VEHICLE, default=options.get(CONF_VEHICLE, GENERIC)):
+                    selector.SelectSelector(selector.SelectSelectorConfig(options=[
+                        selector.SelectOptionDict(value=key, label=label)
+                        for key, (label, _) in VEHICLES.items()])),
                 vol.Required(CONF_RUNNING_VOLTAGE,
                              default=options.get(CONF_RUNNING_VOLTAGE, DEFAULT_RUNNING_VOLTAGE)):
                     vol.All(vol.Coerce(float), vol.Range(min=12.5, max=15)),

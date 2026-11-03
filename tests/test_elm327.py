@@ -1,14 +1,29 @@
-"""Parsing tests. elm327.py has no Home Assistant imports, so load it straight from its file."""
+"""Parsing tests for the ELM327 protocol module and the vehicle profiles."""
 
+import asyncio
 import importlib.util
 import pathlib
 import sys
+import types
 
-_path = pathlib.Path(__file__).parents[1] / "custom_components/elm327_ble/elm327.py"
-_spec = importlib.util.spec_from_file_location("elm327", _path)
-elm327 = importlib.util.module_from_spec(_spec)
-sys.modules["elm327"] = elm327  # dataclasses look the module up while decorating
-_spec.loader.exec_module(elm327)
+# Load the modules that have no Home Assistant imports straight from their files, as
+# members of a stand-in package so their relative imports work without __init__.py.
+_dir = pathlib.Path(__file__).parents[1] / "custom_components/elm327_ble"
+_package = types.ModuleType("elm327_ble")
+_package.__path__ = [str(_dir)]
+sys.modules["elm327_ble"] = _package
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(f"elm327_ble.{name}", _dir / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses look the module up while decorating
+    spec.loader.exec_module(module)
+    return module
+
+
+elm327 = _load("elm327")
+vehicles = _load("vehicles")
 
 PIDS = {p.key: p for p in elm327.PIDS}
 
@@ -71,3 +86,55 @@ def test_dtc_letters():
     assert elm327.format_dtc(0x4123) == "C0123"
     assert elm327.format_dtc(0x8123) == "B0123"
     assert elm327.format_dtc(0xC123) == "U0123"
+
+
+def test_mode22_payload():
+    assert elm327.mode22_payload(b"622A05B4\r\r>", 0x2A05) == b"\xb4"
+    assert elm327.mode22_payload(b"62 13 10 3A 98 \r\r>", 0x1310) == b"\x3a\x98"
+    # A different DID, a refusal (request out of range) and silence are all "no value".
+    assert elm327.mode22_payload(b"622A06B4\r\r>", 0x2A05) is None
+    assert elm327.mode22_payload(b"7F2231\r\r>", 0x2A05) is None
+    assert elm327.mode22_payload(b"NO DATA\r\r>", 0x2A05) is None
+
+
+def test_mazda_cx9_scaling():
+    cx9 = {e.key: e for e in vehicles.MAZDA_CX9_TC}
+    assert cx9["tyre_pressure_front_left"].did == 0x2A07
+    assert cx9["tyre_pressure_rear_right"].did == 0x2A05
+    assert cx9["tyre_pressure_front_left"].decode(bytes([180])) == 247.1
+    assert cx9["tyre_temperature_rear_left"].did == 0x2A0D
+    assert cx9["tyre_temperature_rear_left"].decode(bytes([70])) == 20
+    assert cx9["fuel_remaining"].decode(bytes([47])) == 47
+    assert cx9["oil_temperature"].decode(bytes.fromhex("3A98")) == 110.0
+    assert cx9["transmission_temperature"].decode(bytes.fromhex("0500")) == 80.0
+    assert cx9["transmission_temperature"].decode(bytes.fromhex("FFF0")) == -1.0
+    assert {e.header for e in cx9.values()} == {0x720, 0x7E0, 0x7E1}
+
+
+class _Recorder(elm327.Elm327):
+    """An Elm327 that records commands instead of talking Bluetooth."""
+
+    def __init__(self, replies):
+        self._header = None
+        self.sent = []
+        self._replies = replies
+
+    async def command(self, cmd, timeout=3):
+        self.sent.append(cmd)
+        return self._replies.get(cmd, b"OK\r\r>")
+
+
+def test_mode22_sets_the_header_once_and_broadcast_restores_it():
+    elm = _Recorder({"222A05": b"622A05B4\r\r>", "221310": b"7F2231\r\r>"})
+
+    async def run():
+        first = await elm.mode22(0x720, 0x728, 0x2A05)
+        await elm.mode22(0x720, 0x728, 0x2A06)
+        refused = await elm.mode22(0x7E0, 0x7E8, 0x1310)
+        await elm.broadcast()
+        await elm.broadcast()
+        return first, refused
+
+    assert asyncio.run(run()) == (b"\xb4", None)
+    assert elm.sent == ["ATSH720", "ATCRA728", "222A05", "222A06",
+                        "ATSH7E0", "ATCRA7E8", "221310", "ATSH7DF", "ATCRA"]
