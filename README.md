@@ -38,24 +38,52 @@ when that was.
 PIDs the car doesn't list as supported are never asked for, and their
 sensors stay unknown.
 
-## Vehicle profiles
+## Your car's own readings (OBDb)
 
-Some cars offer more than standard OBD-II through manufacturer-specific
-(service 22) requests to individual modules. Pick the car under **Configure →
-Vehicle** to read those as well:
+Many cars offer more than standard OBD-II through manufacturer-specific requests
+(services 21 and 22) to individual modules: tyre pressures, fuel in litres, oil
+and transmission temperature, an EV's state of charge. Pick the car under
+**Configure → Vehicle** to read those as well.
 
-| Vehicle | Extra sensors |
+The list comes from [OBDb](https://github.com/OBDb), the open vehicle signal
+database also used by the Pelican and Sidecar apps. Picking a car downloads
+its signal set from GitHub once and saves the commands it needs with the
+options, so restarts don't depend on GitHub. Some cars ask for the model year
+next, when OBDb's commands differ between years. A car missing from the list
+(OBDb adds them all the time) can be typed as its OBDb repository name, like
+`Mazda-CX-9`.
+
+Only the readings OBDb marks as everyday ones become sensors, each created only
+if the car's signal set has it:
+
+| Sensor | Unit |
 | --- | --- |
-| Mazda CX-9, second generation (2016-2024) | Tyre pressure for each wheel, tyre temperature for each wheel (disabled by default), fuel remaining in litres, oil temperature, transmission temperature |
+| Tyre pressure, each wheel | kPa |
+| Tyre temperature, each wheel (disabled by default) | °C |
+| Fuel level / fuel remaining | % / L |
+| Odometer, fuel range, electric range, distance to service | km |
+| Coolant, oil and transmission temperature | °C |
+| State of charge, battery health | % |
 
-These are only asked for while the engine runs, like everything else from the
-car. A value the car doesn't answer three times in a row is left alone until
-the next drive.
+Values in other units (bar, psi, °F, miles, gallons) are converted, and Home
+Assistant can show them in yours. Where standard OBD-II already supplied a
+reading, the manufacturer request for it isn't sent. Requests go out only
+while the engine runs, like everything else from the car, and one the car
+doesn't answer three times in a row is left alone until the next drive.
 
-The commands and scaling come from [OBDb](https://github.com/OBDb), the open
-vehicle signal database also used by the Pelican and Sidecar apps, licensed
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Adding
-another car is a matter of a new entry in `vehicles.py`.
+> **Only the 2022 Mazda CX-9 has been tested with this integration.** The other
+> cars' commands come from OBDb, where they were recorded by other people's
+> cars, and the decoding matches OBDb's own test recordings. If your car's
+> readings look wrong, an issue naming the car, model year and adapter helps.
+
+Some OBDb commands need adapter features this integration doesn't use yet
+(29-bit addresses, extended addressing, diagnostic sessions), and those
+readings are left out. `scripts/update_vehicles.py` regenerates the list from
+OBDb before each release.
+
+OBDb's data is licensed
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). This
+integration doesn't ship it: it's fetched from OBDb when a car is picked.
 
 ## Install
 
@@ -88,8 +116,9 @@ and 18F0 (18F1/18F2).
 ## Tested with
 
 - Veepeak OBDCheck BLE (reports itself as ELM327 v2.2, service FFF0)
-- 2022 Mazda CX-9 (ISO 15765-4 CAN, 11 bit, 500 kbaud). It offers fuel level,
-  odometer and coolant temperature, but not oil or outside temperature.
+- 2022 Mazda CX-9 (ISO 15765-4 CAN, 11 bit, 500 kbaud). Through standard OBD-II
+  it offers fuel level, odometer and coolant temperature, but not oil or outside
+  temperature; its OBDb signal set adds the rest.
 - An ESPHome Bluetooth proxy on an ESP32-S3, indoors and through a wall from the garage (about -85 dBm)
 - Home Assistant 2026.10
 
@@ -106,7 +135,8 @@ adapter and car named are welcome.
 
 ## Releasing
 
-Bump `version` in `manifest.json`, add a matching `## X.Y.Z` section to
+Run `python scripts/update_vehicles.py` to refresh the car list from OBDb,
+bump `version` in `manifest.json`, add a matching `## X.Y.Z` section to
 `CHANGELOG.md`, then tag and push:
 
 ```

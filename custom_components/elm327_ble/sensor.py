@@ -24,8 +24,10 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import CONF_SIGNALS
 from .coordinator import CarState, Elm327ConfigEntry
 from .entity import Elm327Entity
+from .obdb import keys
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,7 +99,8 @@ SENSORS: tuple[Elm327SensorDescription, ...] = (
 
 WHEELS = ("front_left", "front_right", "rear_left", "rear_right")
 
-# Manufacturer-specific values, created only when the chosen vehicle offers them.
+# Manufacturer-specific values, created only when the chosen car's OBDb signal set
+# offers them (see obdb.METRICS).
 EXTENDED_SENSORS: tuple[Elm327SensorDescription, ...] = (
     *(Elm327SensorDescription(
         key=f"tyre_pressure_{wheel}", value=_car(f"tyre_pressure_{wheel}"),
@@ -121,13 +124,29 @@ EXTENDED_SENSORS: tuple[Elm327SensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE, state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS, suggested_display_precision=0,
     ),
+    *(Elm327SensorDescription(
+        key=key, value=_car(key), icon=icon, device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0,
+    ) for key, icon in (("fuel_range", "mdi:gas-station"), ("electric_range", "mdi:ev-station"),
+                        ("distance_to_service", "mdi:wrench-clock"))),
+    Elm327SensorDescription(
+        key="state_of_charge", value=_car("state_of_charge"),
+        device_class=SensorDeviceClass.BATTERY, state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE, suggested_display_precision=0,
+    ),
+    Elm327SensorDescription(
+        key="state_of_health", value=_car("state_of_health"), icon="mdi:battery-heart-variant",
+        state_class=SensorStateClass.MEASUREMENT, native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=0, entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: Elm327ConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
-    offered = {e.key for e in coordinator.extended}
+    offered = keys(entry.options.get(CONF_SIGNALS, []))
     async_add_entities(
         Elm327Sensor(coordinator, d)
         for d in (*SENSORS, *(d for d in EXTENDED_SENSORS if d.key in offered)))

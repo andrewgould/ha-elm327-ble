@@ -3,6 +3,23 @@
 Versions follow [semantic versioning](https://semver.org/). The version in
 `manifest.json` is what HACS installs, and each release tag must match it.
 
+## 1.2.0
+
+- **Any car OBDb knows.** The **Vehicle** option now lists the 467 cars whose
+  [OBDb](https://github.com/OBDb) signal sets have readings this integration
+  can use. Picking one downloads its signal set once and saves the commands
+  with the options. Cars whose commands differ by model year ask for the year.
+- Readings come from what OBDb marks as everyday metrics: tyre pressure and
+  temperature, fuel level and litres, odometer, fuel and electric range,
+  distance to service, coolant, oil and transmission temperature, and an EV's
+  state of charge and battery health. Units are converted to kPa, °C, km, L.
+- Service 21 as well as 22, multi-frame replies, and modules that need their
+  own flow control address.
+- Only the Mazda CX-9 is tested; other cars' decoding is checked against
+  OBDb's recorded test cases.
+- An existing **Mazda CX-9, second generation** choice moves to OBDb's
+  Mazda-CX-9 signal set on the first start, keeping the same sensors.
+
 ## 1.1.0
 
 - **Vehicle profiles.** A new **Vehicle** option reads manufacturer-specific

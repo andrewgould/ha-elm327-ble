@@ -26,11 +26,22 @@
           "poll_interval": "Battery voltage read every (seconds) while parked"
         },
         "data_description": {
-          "vehicle": "Some cars offer more than standard OBD-II, such as tyre pressures. Pick yours to read those too.",
+          "vehicle": "Some cars offer more than standard OBD-II, such as tyre pressures. Pick yours to read those too: the commands come from OBDb, the open vehicle signal database, and only the Mazda CX-9 has been tested with this integration. A car not listed can be typed as its OBDb repository name, like Mazda-CX-9.",
           "running_voltage": "The car is only asked for OBD data while the battery voltage is at least this, i.e. while the alternator is charging.",
           "poll_interval": "Reading the voltage only talks to the adapter, not the car. This is also how quickly an engine start is noticed."
         }
+      },
+      "year": {
+        "title": "Model year",
+        "description": "Some of the {vehicle}'s readings differ between model years, so pick yours.",
+        "data": {
+          "year": "Model year"
+        }
       }
+    },
+    "error": {
+      "download_failed": "Couldn't download that car's signal set from OBDb. Check the name matches an OBDb repository and that Home Assistant can reach GitHub.",
+      "no_readings": "OBDb has nothing for that car this integration can read yet."
     }
   },
   "entity": {
@@ -108,6 +119,21 @@
       },
       "transmission_temperature": {
         "name": "Transmission temperature"
+      },
+      "fuel_range": {
+        "name": "Fuel range"
+      },
+      "electric_range": {
+        "name": "Electric range"
+      },
+      "distance_to_service": {
+        "name": "Distance to service"
+      },
+      "state_of_charge": {
+        "name": "State of charge"
+      },
+      "state_of_health": {
+        "name": "Battery health"
       }
     }
   }

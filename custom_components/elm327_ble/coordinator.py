@@ -29,7 +29,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_POLL_INTERVAL,
     CONF_RUNNING_VOLTAGE,
-    CONF_VEHICLE,
+    CONF_SIGNALS,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_RUNNING_VOLTAGE,
     DOMAIN,
@@ -38,8 +38,8 @@ from .const import (
     RETRY_MIN,
     RUNNING_POLL_INTERVAL,
 )
-from .elm327 import PIDS, Elm327, Elm327Error, ExtPid, decode_monitor_status
-from .vehicles import GENERIC, VEHICLES
+from .elm327 import PIDS, Elm327, Elm327Error, decode_monitor_status
+from .obdb import Command, commands
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,8 +76,10 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
         self._elm: Elm327 | None = None
         self._wake = asyncio.Event()
         self._read_dtcs = True
-        # Unanswered reads per service 22 value this drive. After EXT_TRIES misses a value
-        # isn't asked for again until the next drive.
+        # The chosen car's manufacturer-specific requests, from its OBDb signal set.
+        self.commands: tuple[Command, ...] = commands(entry.options.get(CONF_SIGNALS, []))
+        # Unanswered requests per command this drive. After EXT_TRIES misses a command
+        # isn't sent again until the next drive.
         self._ext_misses: dict[str, int] = {}
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.address)},
@@ -93,12 +95,6 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
     @property
     def poll_interval(self) -> float:
         return self.config_entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-
-    @property
-    def extended(self) -> tuple[ExtPid, ...]:
-        """The chosen vehicle's manufacturer-specific values."""
-        vehicle = self.config_entry.options.get(CONF_VEHICLE, GENERIC)
-        return VEHICLES.get(vehicle, VEHICLES[GENERIC])[1]
 
     async def async_start(self) -> None:
         if stored := await self._store.async_load():
@@ -261,23 +257,34 @@ class Elm327Coordinator(DataUpdateCoordinator[CarState]):
                 self._read_dtcs = True
             state.mil = mil
             answered = True
+        # Readings answered this round. A manufacturer command whose readings all came
+        # from somewhere already (standard OBD-II, or an earlier command for another
+        # model year) isn't sent.
+        filled: set[str] = set()
         for pid in PIDS:
             if pid.pid in state.supported and (payload := await elm.mode01(pid.pid)):
                 if len(payload) >= pid.size:
                     state.values[pid.key] = pid.decode(payload)
+                    filled.add(pid.key)
                     answered = True
-        if extended := [e for e in self.extended if self._ext_misses.get(e.key, 0) < EXT_TRIES]:
+        if pending := [c for c in self.commands if self._ext_misses.get(c.name, 0) < EXT_TRIES]:
             try:
-                for ext in extended:
-                    payload = await elm.mode22(ext.header, ext.rx, ext.did)
-                    if payload is not None and len(payload) >= ext.size:
-                        state.values[ext.key] = ext.decode(payload)
-                        self._ext_misses.pop(ext.key, None)
+                for command in pending:
+                    if command.keys <= filled:
+                        continue
+                    payload = await elm.request(command.header, command.rx, command.service,
+                                                command.pid, command.pid_bytes,
+                                                command.flow_control)
+                    if found := command.values(payload) if payload is not None else {}:
+                        state.values.update(found)
+                        filled.update(found)
+                        self._ext_misses.pop(command.name, None)
                         answered = True
                     else:
-                        misses = self._ext_misses[ext.key] = self._ext_misses.get(ext.key, 0) + 1
-                        _LOGGER.debug("%s: no answer for %s (%d of %d)",
-                                      self.address, ext.key, misses, EXT_TRIES)
+                        misses = self._ext_misses[command.name] = (
+                            self._ext_misses.get(command.name, 0) + 1)
+                        _LOGGER.debug("%s: no answer to %s (%d of %d)",
+                                      self.address, command.name, misses, EXT_TRIES)
             finally:
                 await elm.broadcast()
         if self._read_dtcs and answered:

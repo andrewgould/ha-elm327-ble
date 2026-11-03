@@ -54,21 +54,6 @@ PIDS: tuple[Pid, ...] = (
 )
 
 
-@dataclass(frozen=True)
-class ExtPid:
-    """A manufacturer-specific value read with service 22 from one module.
-
-    `header` is the module's request address and `rx` the address it answers from.
-    """
-
-    key: str
-    header: int
-    rx: int
-    did: int
-    size: int
-    decode: Callable[[bytes], float | int]
-
-
 def clean_lines(raw: bytes) -> list[str]:
     """Split a reply into upper-case lines without spaces, prompt or noise."""
     text = raw.decode("ascii", "ignore").replace(">", "")
@@ -91,12 +76,13 @@ def mode01_payload(raw: bytes, pid: int) -> bytes | None:
     return None
 
 
-def mode22_payload(raw: bytes, did: int) -> bytes | None:
-    """Data bytes of the answer to `22 <did>`, or None (no answer, or a 7F refusal)."""
-    prefix = f"62{did:04X}"
-    for line in clean_lines(raw):
-        if line.startswith(prefix) and re.fullmatch(r"[0-9A-F]+", line):
-            data = line[len(prefix):]
+def service_payload(raw: bytes, service: int, pid: str) -> bytes | None:
+    """Data bytes after the echo in the answer to `<service> <pid>` (21 or 22, from one
+    module), single or multi-frame. None for no answer or a 7F refusal."""
+    prefix = f"{service + 0x40:02X}{pid}"
+    for msg in _messages(clean_lines(raw)):
+        if msg.startswith(prefix) and re.fullmatch(r"[0-9A-F]+", msg):
+            data = msg[len(prefix):]
             return bytes.fromhex(data[: len(data) // 2 * 2])
     return None
 
@@ -113,22 +99,29 @@ def decode_monitor_status(payload: bytes) -> tuple[bool, int]:
 
 
 def _messages(lines: list[str]) -> list[str]:
-    """Reassemble ISO-TP multi-frame replies ("00E", "0:...", "1:...") into hex strings."""
-    messages, frames = [], []
+    """Reassemble ISO-TP multi-frame replies ("00E", "0:...", "1:...") into hex strings,
+    cut to the announced length so the last frame's padding is dropped."""
+    messages: list[str] = []
+    frames: list[str] = []
+    length: int | None = None
+
+    def flush() -> None:
+        if frames:
+            joined = "".join(frames)
+            messages.append(joined[: length * 2] if length else joined)
+            frames.clear()
+
     for line in lines:
         if m := re.fullmatch(r"([0-9A-F]):([0-9A-F]+)", line):
             frames.append(m.group(2))
         elif re.fullmatch(r"[0-9A-F]{3}", line):
-            if frames:
-                messages.append("".join(frames))
-            frames = []
+            flush()
+            length = int(line, 16)
         else:
-            if frames:
-                messages.append("".join(frames))
-                frames = []
+            flush()
+            length = None
             messages.append(line)
-    if frames:
-        messages.append("".join(frames))
+    flush()
     return messages
 
 
@@ -180,9 +173,9 @@ class Elm327:
         self._buffer = bytearray()
         self._prompt = asyncio.Event()
         self._lock = asyncio.Lock()
-        # Module address set with ATSH for service 22, or None for the default
-        # functional (broadcast) address that mode 01 and 03 use.
-        self._header: int | None = None
+        # (header, rx, flow control) set for one module's service 21/22 requests, or
+        # None for the default functional (broadcast) address that mode 01 and 03 use.
+        self._target: tuple[int, int | None, bool] | None = None
 
     def _on_notify(self, _: BleakGATTCharacteristic, data: bytearray) -> None:
         self._buffer.extend(data)
@@ -193,7 +186,7 @@ class Elm327:
         """Subscribe and reset the adapter to terse output. Returns its version string."""
         await self._client.start_notify(self._rx, self._on_notify)
         reply = (await self.command("ATZ", timeout=5)).decode("ascii", "ignore")
-        self._header = None
+        self._target = None
         for cmd in ("ATE0", "ATL0", "ATS0", "ATH0"):
             await self.command(cmd)
         return next((line.strip() for line in reply.split("\r") if line.strip().startswith("ELM")),
@@ -221,20 +214,36 @@ class Elm327:
     async def mode01(self, pid: int, timeout: float = 3) -> bytes | None:
         return mode01_payload(await self.command(f"01{pid:02X}", timeout), pid)
 
-    async def mode22(self, header: int, rx: int, did: int) -> bytes | None:
-        """Ask one module for a service 22 value. Call broadcast() when done."""
-        if self._header != header:
+    async def request(self, header: int, rx: int | None, service: int, pid: int,
+                      pid_bytes: int, flow_control: bool = False) -> bytes | None:
+        """Ask one module for a service 21 or 22 value. Call broadcast() when done.
+
+        `rx` is the address the module answers from (None: any). With `flow_control`
+        the adapter sends flow control frames for multi-frame replies to `header`
+        itself, for modules whose request and reply addresses aren't 8 apart.
+        """
+        target = (header, rx, flow_control)
+        if self._target != target:
             await self.command(f"ATSH{header:03X}")
-            await self.command(f"ATCRA{rx:03X}")
-            self._header = header
-        return mode22_payload(await self.command(f"22{did:04X}"), did)
+            await self.command(f"ATCRA{rx:03X}" if rx is not None else "ATCRA")
+            if flow_control:
+                await self.command(f"ATFCSH{header:03X}")
+                await self.command("ATFCSD300000")
+                await self.command("ATFCSM1")
+            elif self._target and self._target[2]:
+                await self.command("ATFCSM0")
+            self._target = target
+        pid_hex = f"{pid:0{pid_bytes * 2}X}"
+        return service_payload(await self.command(f"{service:02X}{pid_hex}"), service, pid_hex)
 
     async def broadcast(self) -> None:
         """Back to the functional address and any receiver, for mode 01 and 03."""
-        if self._header is not None:
+        if self._target is not None:
             await self.command("ATSH7DF")
             await self.command("ATCRA")
-            self._header = None
+            if self._target[2]:
+                await self.command("ATFCSM0")
+            self._target = None
 
     async def supported(self) -> set[int]:
         """Walk the "PIDs supported" chain (00, 20, 40 ...) as far as the car goes."""
